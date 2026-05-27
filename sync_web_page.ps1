@@ -5,8 +5,17 @@
 $inputFile  = "preview\index.html"
 $outputFile = "firmware\fan_control\web_page.h"
 
+# Support both the documented repo layout and a flat workspace layout where
+# index.html/web_page.h sit beside this script.
+if (-not (Test-Path (Join-Path $PSScriptRoot $inputFile))) {
+    $inputFile = "index.html"
+}
+if (-not (Test-Path (Join-Path $PSScriptRoot (Split-Path $outputFile -Parent)))) {
+    $outputFile = "web_page.h"
+}
+
 # Read all lines
-$lines = Get-Content $inputFile
+$lines = Get-Content (Join-Path $PSScriptRoot $inputFile)
 
 # Find the simulation block boundaries
 # The simulation block starts at "/* -- Interactive Simulation Mode (Fallback) ---*/"
