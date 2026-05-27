@@ -1184,7 +1184,7 @@
                     <span id="currentRunValue" class="stat-value">—</span>
                 </div>
                 <div class="runtime-stat">
-                    <span class="stat-label">Total Runtime</span>
+                    <span class="stat-label">Today Runtime</span>
                     <span id="totalRunValue" class="stat-value">—</span>
                 </div>
                 <div class="runtime-stat">
@@ -2025,7 +2025,7 @@
                         }
                     }
 
-                    // Live total runtime in seconds (banked + current run)
+                    // Live today runtime in seconds (banked + current run)
                     const liveTotalSec = Math.floor(simTotalRun / 1000) +
                         (simFan && simFanOnSince > 0 ? Math.floor((Date.now() - simFanOnSince) / 1000) : 0);
 

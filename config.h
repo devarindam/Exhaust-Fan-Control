@@ -7,6 +7,8 @@
 #define WIFI_SSID       "YOUR_WIFI_SSID"
 #define WIFI_PASSWORD   "YOUR_WIFI_PASSWORD"
 #define WIFI_HOSTNAME   "smart-fan"
+#define NTP_SERVER      "pool.ntp.org"
+#define TZ_INFO         "BDT-6"       // POSIX timezone string. BDT-6 = UTC+6.
 
 // Captive portal provisioning fallback. If WiFi credentials are empty/default
 // or the controller cannot connect, it starts this AP so credentials can be set
@@ -27,6 +29,16 @@
 #define SWITCH_ON_PIN       26      // Physical switch ON position (LOW when active)
 #define FEEDBACK_PIN        27      // Contactor aux NO contact (LOW when closed/energized)
 #define BUZZER_PIN          33      // Buzzer pin
+
+// ============================================
+// Optional Local LCD Display (I2C 20x4)
+// ============================================
+#define LCD_ENABLED         true    // Set false if no LCD is connected
+#define LCD_I2C_ADDRESS     0x27    // Common addresses: 0x27 or 0x3F
+#define LCD_COLUMNS         20
+#define LCD_ROWS            4
+#define LCD_SDA_PIN         21      // ESP32 default I2C SDA
+#define LCD_SCL_PIN         22      // ESP32 default I2C SCL
 
 // ============================================
 // Relay Logic
@@ -66,6 +78,7 @@
 // protected). Bounds are enforced server-side.
 #define DEFAULT_MAX_CONT_RUN_MS   (12UL * 60UL * 60UL * 1000UL)   // 12 hours
 #define DEFAULT_COOLDOWN_MS       (30UL * 60UL * 1000UL)          // 30 minutes
+#define DAILY_RUNTIME_WINDOW_MS   (24UL * 60UL * 60UL * 1000UL)   // Fallback reset window when NTP time is unavailable
 
 // Allowed runtime-configurable bounds
 #define MIN_MAX_CONT_RUN_MS       (1UL * 60UL * 60UL * 1000UL)    // 1 hour
@@ -91,6 +104,7 @@
 // ============================================
 #define SENSOR_INTERVAL     2000    // Read sensor every 2 seconds
 #define BROADCAST_INTERVAL  1000    // Broadcast status every 1 second
+#define LCD_UPDATE_INTERVAL 1000    // Refresh LCD once per second
 #define WIFI_TIMEOUT        20000   // WiFi connection timeout
 #define WIFI_RECONNECT_INTERVAL 10000
 

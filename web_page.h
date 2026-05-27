@@ -1188,7 +1188,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
                     <span id="currentRunValue" class="stat-value">—</span>
                 </div>
                 <div class="runtime-stat">
-                    <span class="stat-label">Total Runtime</span>
+                    <span class="stat-label">Today Runtime</span>
                     <span id="totalRunValue" class="stat-value">—</span>
                 </div>
                 <div class="runtime-stat">

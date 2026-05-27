@@ -12,6 +12,7 @@
  *    - DHT22 sensor on GPIO4
  *    - Relay module on GPIO16 (active-LOW)
  *    - Onboard LED on GPIO2 (status indicator)
+ *    - Optional 20x4 I2C LCD on GPIO21/GPIO22
  *
  *  Communication:
  *    - HTTP server on port 80  (serves dashboard HTML)
@@ -23,6 +24,7 @@
  *    - WebSocketsServer.h (Links2004/arduinoWebSockets)
  *    - DHT.h             (Adafruit DHT sensor library)
  *    - ArduinoJson.h     (v6, bblanchon/ArduinoJson)
+ *    - LiquidCrystal_I2C.h (20x4 I2C LCD)
  *
  * ============================================================
  */
@@ -35,9 +37,12 @@
 #include <WebSocketsServer.h>
 #include <ESPmDNS.h>
 #include <DNSServer.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 #include <Preferences.h>
 #include <DHT.h>
 #include <ArduinoJson.h>
+#include <time.h>
 
 #include "config.h"
 #include "web_page.h"
@@ -50,6 +55,7 @@ WebServer server(80);
 WebSocketsServer webSocket(81);
 DNSServer dnsServer;
 Preferences prefs;
+LiquidCrystal_I2C lcd(LCD_I2C_ADDRESS, LCD_COLUMNS, LCD_ROWS);
 
 // ============================================
 // Global Variables
@@ -62,6 +68,7 @@ float threshold = DEFAULT_THRESHOLD;
 float hysteresis = DEFAULT_HYSTERESIS;
 unsigned long lastSensorRead = 0;
 unsigned long lastBroadcast = 0;
+unsigned long lastLcdUpdate = 0;
 unsigned long startTime = 0;
 
 // Cycle protection, alarm, and physical switch variables
@@ -79,7 +86,9 @@ bool mdnsStarted = false;
 // --- Runtime tracking & forced-rest (cooldown) state ---
 unsigned long fanOnSince = 0;          // millis() when current continuous ON run started (0 if OFF)
 unsigned long currentRunMs = 0;        // Length of current continuous ON run (live)
-uint64_t totalRunMs = 0;               // Total accumulated ON-time, persisted across reboot
+uint64_t todayRunMs = 0;               // Accumulated ON-time in the current controller day
+unsigned long runtimeDayStart = 0;     // millis() when the current runtime day started
+uint32_t runtimeDayId = 0;             // Local YYYYMMDD when NTP time is available
 unsigned long fanCycleCount = 0;       // Number of OFF -> ON transitions since boot
 
 bool cooldownActive = false;           // True while motor is in forced rest
@@ -140,12 +149,15 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 void readPhysicalSwitch();
 String getLockType(unsigned long &remainingSec);
 void updateRuntimeStats();
+void resetDailyRuntimeIfNeeded();
 void checkContinuousRunLimit();
 void endCooldown(const char *reason);
 void populateStatusDoc(JsonDocument &doc);
 void loadPersistentSettings();
 void savePersistentSettings();
 void saveRuntimeStats();
+void syncLocalTime();
+uint32_t getCurrentDayId();
 void loadWiFiCredentials();
 bool connectWiFi();
 void startProvisioningMode();
@@ -168,6 +180,10 @@ unsigned long clampULong(unsigned long value, unsigned long minValue, unsigned l
 void triggerBuzzerEvent(unsigned int beeps, unsigned int onMs, unsigned int offMs);
 void updateBuzzer();
 void emitEvent(const char *eventName);
+void initLocalDisplay();
+void updateLocalDisplay();
+void lcdPrintLine(uint8_t row, const String &text);
+String formatDurationShort(unsigned long totalSeconds);
 
 // ============================================
 // Setup
@@ -197,6 +213,8 @@ void setup() {
     updateDebouncedInput(switchOnInput, 0);
     updateDebouncedInput(feedbackInput, 0);
 
+    initLocalDisplay();
+
     // --- DHT Sensor Init ---
     dht.begin();
     Serial.println("[INIT] DHT22 sensor initialized.");
@@ -212,6 +230,7 @@ void setup() {
         startProvisioningMode();
     } else {
         startMDNS();
+        syncLocalTime();
         digitalWrite(LED_PIN, HIGH);
     }
 
@@ -233,6 +252,7 @@ void setup() {
 
     // --- Record Start Time ---
     startTime = millis();
+    runtimeDayStart = startTime;
     lastStateChangeTime = millis(); // Set initial cycle protection reference
 
     // Read initial physical switch state
@@ -387,6 +407,12 @@ void loop() {
         lastBroadcast = now;
         broadcastStatus();
     }
+
+    // --- Refresh local LCD status display ---
+    if (now - lastLcdUpdate >= LCD_UPDATE_INTERVAL) {
+        lastLcdUpdate = now;
+        updateLocalDisplay();
+    }
 }
 
 // ============================================
@@ -411,7 +437,9 @@ void setFan(bool on) {
         } else {
             // ON -> OFF: bank the elapsed run-time then reset the timer
             if (fanOnSince > 0) {
-                totalRunMs += (millis() - fanOnSince);
+                unsigned long now = millis();
+                unsigned long runStartForToday = (fanOnSince < runtimeDayStart) ? runtimeDayStart : fanOnSince;
+                todayRunMs += (now - runStartForToday);
             }
             fanOnSince = 0;
             currentRunMs = 0;
@@ -427,11 +455,50 @@ void setFan(bool on) {
 // Update Runtime Stats (called every loop)
 // ============================================
 void updateRuntimeStats() {
+    resetDailyRuntimeIfNeeded();
+
     if (fanOn && fanOnSince > 0) {
         currentRunMs = millis() - fanOnSince;
     } else {
         currentRunMs = 0;
     }
+}
+
+void resetDailyRuntimeIfNeeded() {
+    unsigned long now = millis();
+    uint32_t currentDayId = getCurrentDayId();
+
+    if (currentDayId > 0) {
+        if (runtimeDayId == 0) {
+            runtimeDayId = currentDayId;
+            if (todayRunMs > 0) {
+                todayRunMs = 0;
+                runtimeDayStart = now;
+                Serial.println("[RUNTIME] Daily runtime counter reset after first valid time sync.");
+            }
+            saveRuntimeStats();
+            return;
+        }
+        if (currentDayId == runtimeDayId) return;
+
+        runtimeDayId = currentDayId;
+        runtimeDayStart = now;
+        todayRunMs = 0;
+        Serial.println("[RUNTIME] Daily runtime counter reset for new local day.");
+        saveRuntimeStats();
+        broadcastStatus();
+        return;
+    }
+
+    if ((now - runtimeDayStart) < DAILY_RUNTIME_WINDOW_MS) return;
+
+    unsigned long elapsedIntoNewDay = (now - runtimeDayStart) % DAILY_RUNTIME_WINDOW_MS;
+    runtimeDayStart = now - elapsedIntoNewDay;
+    todayRunMs = 0;
+
+    Serial.println("[RUNTIME] Daily runtime counter reset by fallback 24h window.");
+    saveRuntimeStats();
+    broadcastStatus();
 }
 
 // ============================================
@@ -519,11 +586,13 @@ void populateStatusDoc(JsonDocument &doc) {
     doc["last_event"] = lastNotificationEvent;
 
     // --- Runtime tracking ---
-    // Current continuous-run time and total accumulated time include the in-
+    // Current continuous-run time and today's accumulated time include the in-
     // progress run so the dashboard updates live without waiting for an OFF.
-    uint64_t liveTotal = totalRunMs + (fanOn && fanOnSince > 0 ? (uint64_t)(millis() - fanOnSince) : 0);
+    unsigned long runStartForToday = (fanOnSince < runtimeDayStart) ? runtimeDayStart : fanOnSince;
+    uint64_t liveToday = todayRunMs + (fanOn && fanOnSince > 0 ? (uint64_t)(millis() - runStartForToday) : 0);
     doc["current_run_sec"] = currentRunMs / 1000UL;
-    doc["total_run_sec"]   = (uint64_t)(liveTotal / 1000ULL);
+    doc["total_run_sec"]   = (uint64_t)(liveToday / 1000ULL);
+    doc["runtime_day_sec"] = (millis() - runtimeDayStart) / 1000UL;
     doc["cycle_count"]     = fanCycleCount;
 
     // --- Forced rest (cooldown) ---
@@ -813,7 +882,8 @@ void loadPersistentSettings() {
     hysteresis = prefs.getFloat("hyst", DEFAULT_HYSTERESIS);
     maxContRunMs = prefs.getULong("max_run", DEFAULT_MAX_CONT_RUN_MS);
     cooldownMs = prefs.getULong("cooldown", DEFAULT_COOLDOWN_MS);
-    totalRunMs = prefs.getULong64("total_ms", 0);
+    todayRunMs = prefs.getULong64("today_ms", 0);
+    runtimeDayId = prefs.getUInt("day_id", 0);
     fanCycleCount = prefs.getULong("cycles", 0);
     prefs.end();
 
@@ -837,10 +907,38 @@ void savePersistentSettings() {
 
 void saveRuntimeStats() {
     prefs.begin("fanctrl", false);
-    prefs.putULong64("total_ms", totalRunMs);
+    prefs.putULong64("today_ms", todayRunMs);
+    prefs.putUInt("day_id", runtimeDayId);
     prefs.putULong("cycles", fanCycleCount);
     prefs.end();
     Serial.println("[NVS] Runtime counters saved.");
+}
+
+void syncLocalTime() {
+    configTzTime(TZ_INFO, NTP_SERVER);
+    Serial.print("[TIME] Syncing local time via NTP");
+
+    struct tm timeInfo;
+    for (uint8_t i = 0; i < 10; i++) {
+        if (getLocalTime(&timeInfo, 500)) {
+            uint32_t currentDayId = getCurrentDayId();
+            Serial.print("\n[TIME] Local day synced: ");
+            Serial.println(currentDayId);
+            resetDailyRuntimeIfNeeded();
+            return;
+        }
+        Serial.print(".");
+    }
+    Serial.println("\n[TIME] NTP sync unavailable. Daily runtime will use 24h fallback until time syncs.");
+}
+
+uint32_t getCurrentDayId() {
+    time_t nowTime = time(nullptr);
+    if (nowTime < 1704067200) return 0; // 2024-01-01; filters unsynced clocks.
+
+    struct tm timeInfo;
+    localtime_r(&nowTime, &timeInfo);
+    return (uint32_t)((timeInfo.tm_year + 1900) * 10000UL + (timeInfo.tm_mon + 1) * 100UL + timeInfo.tm_mday);
 }
 
 // ============================================
@@ -1165,4 +1263,91 @@ void emitEvent(const char *eventName) {
     lastNotificationEvent = eventName;
     Serial.print("[EVENT] ");
     Serial.println(eventName);
+}
+
+// ============================================
+// Local 20x4 I2C LCD Display
+// ============================================
+void initLocalDisplay() {
+    if (!LCD_ENABLED) return;
+
+    Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
+    lcd.init();
+    lcd.backlight();
+    lcd.clear();
+    lcdPrintLine(0, "Smart Fan Control");
+    lcdPrintLine(1, "Booting...");
+    lcdPrintLine(2, "LCD 20x4 ready");
+    lcdPrintLine(3, "");
+}
+
+void updateLocalDisplay() {
+    if (!LCD_ENABLED) return;
+
+    String line0;
+    if (sensorStatus == "ok") {
+        line0 = "T:" + String(currentTemp, 1) + "C H:" + String(currentHumidity, 0) + "%";
+    } else {
+        line0 = "Sensor: " + sensorStatus;
+    }
+
+    String line1 = "Fan:";
+    line1 += fanOn ? "ON " : "OFF";
+    line1 += " Sel:" + physicalSwitchState;
+
+    String line2 = "State:" + String(controllerStateName());
+    if (contactorFault) {
+        line2 = "FAULT: contactor";
+    } else if (tempAlarm) {
+        line2 = "ALARM: high temp";
+    } else if (sensorFailSafeActive) {
+        line2 = "Sensor fail-safe";
+    }
+
+    String line3;
+    if (cooldownActive) {
+        unsigned long elapsed = millis() - cooldownStart;
+        unsigned long remaining = (elapsed < cooldownMs) ? (cooldownMs - elapsed) / 1000UL : 0;
+        line3 = "Cooldown " + formatDurationShort(remaining);
+    } else if (provisioningMode) {
+        line3 = "AP: " + String(PROVISIONING_AP_SSID);
+    } else if (WiFi.status() == WL_CONNECTED) {
+        line3 = WiFi.localIP().toString();
+    } else {
+        line3 = "WiFi reconnecting";
+    }
+
+    lcdPrintLine(0, line0);
+    lcdPrintLine(1, line1);
+    lcdPrintLine(2, line2);
+    lcdPrintLine(3, line3);
+}
+
+void lcdPrintLine(uint8_t row, const String &text) {
+    if (row >= LCD_ROWS) return;
+
+    String padded = text;
+    if (padded.length() > LCD_COLUMNS) {
+        padded = padded.substring(0, LCD_COLUMNS);
+    }
+    while (padded.length() < LCD_COLUMNS) {
+        padded += ' ';
+    }
+
+    lcd.setCursor(0, row);
+    lcd.print(padded);
+}
+
+String formatDurationShort(unsigned long totalSeconds) {
+    unsigned long hours = totalSeconds / 3600UL;
+    unsigned long minutes = (totalSeconds % 3600UL) / 60UL;
+    unsigned long seconds = totalSeconds % 60UL;
+
+    if (hours > 0) {
+        return String(hours) + "h " + String(minutes) + "m";
+    }
+    if (minutes > 0) {
+        return String(minutes) + "m " + String(seconds) + "s";
+    }
+    return String(seconds) + "s";
 }

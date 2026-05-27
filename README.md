@@ -10,10 +10,11 @@ A complete IoT system that reads room temperature and automatically controls an 
 - **Physical selector control** — AUTO/OFF/ON selector switch owns fan mode and power for safer local operation
 - **Real-time monitoring** — Live temperature, humidity, and fan status updates via WebSocket
 - **Hysteresis control** — Prevents rapid toggling near the threshold temperature
-- **Live fan runtime tracking** — Current continuous run, total runtime, and ON/OFF cycle count update live on the dashboard
+- **Live fan runtime tracking** — Current continuous run, today's runtime, and ON/OFF cycle count update live on the dashboard
 - **Forced rest cycle (motor protection)** — After 12 hours of continuous operation the fan is automatically stopped and locked in a 30-minute cooldown to protect the motor windings. Both durations are adjustable from the dashboard.
 - **Persistent protected settings** — Threshold, hysteresis, max continuous run, cooldown duration, and runtime counters survive reboot using ESP32 NVS/Preferences
 - **Sensor and controller health** — Dashboard reports sensor status, last sensor update, WiFi quality, contactor feedback, controller state, and active lock reason
+- **Local 20x4 LCD status** — Optional I2C LCD shows temperature, humidity, fan state, selector position, controller state, WiFi/IP, and cooldown status without opening the dashboard
 - **WiFi provisioning mode** — If credentials are missing or invalid, the controller opens a setup access point so WiFi can be configured without editing `config.h`
 - **Beautiful dashboard** — Premium dark-themed web UI with animated fan icon
 - **Zero app install** — Access from any device's browser on the same WiFi network
@@ -35,6 +36,7 @@ A complete IoT system that reads room temperature and automatically controls an 
 | 9 | 3-position selector switch | AUTO/OFF/ON local control |
 | 10 | Contactor auxiliary NO contact | Feedback input for contactor state |
 | 11 | Buzzer | Local alarm/notification output |
+| 12 | 20x4 I2C LCD Display | HD44780-compatible LCD with I2C backpack, usually address `0x27` or `0x3F` |
 
 ---
 
@@ -76,7 +78,10 @@ A complete IoT system that reads room temperature and automatically controls an 
     │  GPIO 26    ├───────────────────►│ ON Switch    │
     │  GPIO 27    ├───────────────────►│ Aux Feedback │
     │  GPIO 33    ├───────────────────►│ Buzzer       │
+    │  GPIO 21    ├───────────────────►│ LCD SDA      │
+    │  GPIO 22    ├───────────────────►│ LCD SCL      │
     │  3.3V       ├───────────────────►│ DHT22 VCC    │
+    │  5V (Vin)   ├───────────────────►│ LCD VCC      │
     │  5V (Vin)   ├───────────────────►│ Relay VCC    │
     │  GND        ├───────────────────►│ Common GND   │
     │  GPIO 2     │ (Onboard LED)      │              │
@@ -89,6 +94,12 @@ A complete IoT system that reads room temperature and automatically controls an 
     └─┬──┬──┬─┘    Pin 2 (Data) → ESP32 GPIO 4 (+ 10kΩ pull-up to 3.3V)
       │  │  │      Pin 3 (GND)  → ESP32 GND
      VCC DATA GND
+
+    20x4 I2C LCD Wiring:
+    VCC → ESP32 5V (Vin)
+    GND → ESP32 GND
+    SDA → ESP32 GPIO 21
+    SCL → ESP32 GPIO 22
 ```
 
 > ⚠️ **SAFETY WARNING**: This system interfaces with 220V AC mains. All AC wiring
@@ -123,6 +134,7 @@ Install these libraries in Arduino IDE (**Sketch → Include Library → Manage 
 | Adafruit Unified Sensor | Adafruit | 1.1.x+ |
 | ArduinoJson | Benoît Blanchon | 6.x |
 | WebSockets | Markus Sattler (Links2004) | 2.4.x+ |
+| LiquidCrystal I2C | Frank de Brabander or compatible | 1.1.x+ |
 
 ### Arduino IDE Board Setup
 
@@ -157,8 +169,12 @@ Optionally adjust:
 - `DEFAULT_THRESHOLD` — Auto-ON temperature (default: 28.0°C)
 - `DEFAULT_HYSTERESIS` — Hysteresis band (default: 2.0°C)
 - `WIFI_HOSTNAME` — mDNS hostname, e.g. `http://smart-fan.local`
+- `NTP_SERVER` / `TZ_INFO` — Time source and local timezone used to reset the daily runtime counter at the start of each local day. Default timezone is Bangladesh (`BDT-6`).
 - `SETTINGS_PASSWORD` — Administrator password for protected dashboard settings. Change the default before real deployment.
 - `SENSOR_FAIL_SAFE_ON` — Whether AUTO mode should run the fan if the DHT22 repeatedly fails and cooldown/local OFF do not block it.
+- `LCD_ENABLED` — Enables the optional 20x4 I2C LCD local status display.
+- `LCD_I2C_ADDRESS` — LCD backpack address, usually `0x27` or `0x3F`.
+- `LCD_SDA_PIN` / `LCD_SCL_PIN` — I2C pins for the LCD, defaulting to ESP32 GPIO 21/22.
 
 ### Upload
 
@@ -213,7 +229,7 @@ The dashboard's **Fan Runtime** section shows live operational stats:
 | Metric | Description |
 |--------|-------------|
 | Current Run | How long the fan has been ON in its current continuous run (resets to 0 whenever the fan turns OFF). |
-| Total Runtime | Total accumulated ON-time since the controller booted. |
+| Today Runtime | Total fan ON-time for the current local day. The controller uses NTP time when WiFi is available, with a 24-hour-after-boot fallback if time has not synced. |
 | On/Off Cycles | Number of OFF→ON transitions since boot. |
 | Rest Cooldown | Status of the motor protection cooldown (`Inactive` or remaining time). |
 
@@ -245,7 +261,7 @@ The **Rest Cycle** card on the dashboard exposes two password-protected sliders:
 
 Click the 🔒 icon and enter the administrator password (defined by `SETTINGS_PASSWORD` in `config.h`) to unlock the sliders.
 
-Runtime-adjustable settings are saved to ESP32 NVS/Preferences. Threshold, hysteresis, max continuous run, cooldown duration, total runtime, and cycle count are restored after reboot.
+Runtime-adjustable settings are saved to ESP32 NVS/Preferences. Threshold, hysteresis, max continuous run, cooldown duration, today's runtime, and cycle count are restored after reboot. Today's runtime resets when the local calendar day changes after NTP sync.
 
 ### Emergency override
 
@@ -283,7 +299,7 @@ esp32-fan-control/
 
 ```
 ┌──────────┐     GPIO 4      ┌────────┐
-│  DHT22   ├─────────────────┤        │      WiFi (STA)       ┌──────────┐
+│  DHT22   ├─────────────────┤        │      WiFi (STA)      ┌──────────┐
 │  Sensor  │   Temperature   │ ESP32  ├──────────────────────►│  Browser │
 └──────────┘   & Humidity    │        │   WebSocket (:81)     │Dashboard │
                              │        │   HTTP (:80)          └──────────┘
