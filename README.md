@@ -299,7 +299,7 @@ esp32-fan-control/
 
 ```
 ┌──────────┐     GPIO 4      ┌────────┐
-│  DHT22   ├─────────────────┤        │      WiFi (STA)      ┌──────────┐
+│  DHT22   ├─────────────────┤        │      WiFi (STA)       ┌──────────┐
 │  Sensor  │   Temperature   │ ESP32  ├──────────────────────►│  Browser │
 └──────────┘   & Humidity    │        │   WebSocket (:81)     │Dashboard │
                              │        │   HTTP (:80)          └──────────┘
