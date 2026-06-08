@@ -1064,7 +1064,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
                         <div id="tempBarMarker" class="temp-bar-marker" style="left:0%"></div>
                     </div>
                     <div class="temp-bar-range">
-                        <span>15°C</span>
+                        <span>10°C</span>
                         <span>45°C</span>
                     </div>
                 </div>
@@ -1451,7 +1451,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             applyTempGradient(tempEl, data.temp);
 
             // Temperature bar marker
-            const pct = Math.max(0, Math.min(100, ((data.temp - 15) / 30) * 100));
+            const pct = Math.max(0, Math.min(100, ((data.temp - 10) / 35) * 100));
             document.getElementById('tempBarMarker').style.left = pct + '%';
 
             // Humidity
