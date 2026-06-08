@@ -1092,30 +1092,31 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
                             </linearGradient>
                         </defs>
                         <g id="fanBlades" class="fan-blades" transform-origin="100 100">
-                            <!-- Blade 1 (up) -->
-                            <g class="fan-blade-group">
-                                <path class="fan-blade" d="M100,90 Q95,50 80,20 Q100,10 120,20 Q105,50 100,90 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
-                                <path d="M100,90 Q97,50 90,20 Q100,10 105,20 Q100,50 100,90 Z" fill="#ffffff" opacity="0.12"/>
+                            <!-- 5 identical blades, evenly spaced at 72° intervals about (100,100) -->
+                            <!-- Blade 1 (0°) -->
+                            <g class="fan-blade-group" transform="rotate(0 100 100)">
+                                <path class="fan-blade" d="M100,86 C90,70 86,46 92,26 C95,17 100,14 100,14 C100,14 105,17 108,26 C114,46 110,70 100,86 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
+                                <path d="M100,84 C96,68 94,46 97,28 C98,20 100,18 100,18 C100,18 102,20 103,28 C106,46 104,68 100,84 Z" fill="#ffffff" opacity="0.12"/>
                             </g>
-                            <!-- Blade 2 (upper-right) -->
-                            <g class="fan-blade-group">
-                                <path class="fan-blade" d="M108,95 Q140,75 170,65 Q178,85 170,105 Q140,90 108,95 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
-                                <path d="M108,95 Q130,85 155,75 Q160,85 155,95 Q130,90 108,95 Z" fill="#ffffff" opacity="0.12"/>
+                            <!-- Blade 2 (72°) -->
+                            <g class="fan-blade-group" transform="rotate(72 100 100)">
+                                <path class="fan-blade" d="M100,86 C90,70 86,46 92,26 C95,17 100,14 100,14 C100,14 105,17 108,26 C114,46 110,70 100,86 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
+                                <path d="M100,84 C96,68 94,46 97,28 C98,20 100,18 100,18 C100,18 102,20 103,28 C106,46 104,68 100,84 Z" fill="#ffffff" opacity="0.12"/>
                             </g>
-                            <!-- Blade 3 (lower-right) -->
-                            <g class="fan-blade-group">
-                                <path class="fan-blade" d="M105,108 Q130,130 145,160 Q125,170 105,160 Q120,130 105,108 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
-                                <path d="M105,108 Q120,120 130,145 Q120,150 115,145 Q115,125 105,108 Z" fill="#ffffff" opacity="0.12"/>
+                            <!-- Blade 3 (144°) -->
+                            <g class="fan-blade-group" transform="rotate(144 100 100)">
+                                <path class="fan-blade" d="M100,86 C90,70 86,46 92,26 C95,17 100,14 100,14 C100,14 105,17 108,26 C114,46 110,70 100,86 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
+                                <path d="M100,84 C96,68 94,46 97,28 C98,20 100,18 100,18 C100,18 102,20 103,28 C106,46 104,68 100,84 Z" fill="#ffffff" opacity="0.12"/>
                             </g>
-                            <!-- Blade 4 (lower-left) -->
-                            <g class="fan-blade-group">
-                                <path class="fan-blade" d="M92,108 Q65,130 50,160 Q70,170 92,160 Q77,130 92,108 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
-                                <path d="M92,108 Q77,120 70,145 Q80,150 85,145 Q85,125 92,108 Z" fill="#ffffff" opacity="0.12"/>
+                            <!-- Blade 4 (216°) -->
+                            <g class="fan-blade-group" transform="rotate(216 100 100)">
+                                <path class="fan-blade" d="M100,86 C90,70 86,46 92,26 C95,17 100,14 100,14 C100,14 105,17 108,26 C114,46 110,70 100,86 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
+                                <path d="M100,84 C96,68 94,46 97,28 C98,20 100,18 100,18 C100,18 102,20 103,28 C106,46 104,68 100,84 Z" fill="#ffffff" opacity="0.12"/>
                             </g>
-                            <!-- Blade 5 (upper-left) -->
-                            <g class="fan-blade-group">
-                                <path class="fan-blade" d="M92,95 Q60,75 30,65 Q22,85 30,105 Q60,90 92,95 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
-                                <path d="M92,95 Q70,85 45,75 Q40,85 45,95 Q70,90 92,95 Z" fill="#ffffff" opacity="0.12"/>
+                            <!-- Blade 5 (288°) -->
+                            <g class="fan-blade-group" transform="rotate(288 100 100)">
+                                <path class="fan-blade" d="M100,86 C90,70 86,46 92,26 C95,17 100,14 100,14 C100,14 105,17 108,26 C114,46 110,70 100,86 Z" fill="url(#bladeOffGradient)" opacity="0.95"/>
+                                <path d="M100,84 C96,68 94,46 97,28 C98,20 100,18 100,18 C100,18 102,20 103,28 C106,46 104,68 100,84 Z" fill="#ffffff" opacity="0.12"/>
                             </g>
                         </g>
                         <!-- Center Hub -->
@@ -1174,7 +1175,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             </div>
 
             <div style="margin-top: 8px; padding: 10px 14px; background: rgba(255,255,255,0.03); border-left: 3px solid #5ff9a7; border-radius: 6px; font-size: 12px; color: rgba(255,255,255,0.65); line-height: 1.5;">
-                Read-only. Mode and power are driven by the physical AUTO/OFF/ON selector switch on the device.
+                Read-only. Mode and power are driven by the physical AUTO/MANUAL and ON/OFF toggle switches on the device.
             </div>
         </section>
 
@@ -1693,11 +1694,11 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
         /* ── Commands ───────────────────────────────── */
         function setMode(isAuto) {
-            console.log('Mode toggle ignored. Use physical AUTO/OFF/ON selector switch.');
+            console.log('Mode toggle ignored. Use physical AUTO/MANUAL and ON/OFF toggle switches.');
         }
 
         function toggleFan() {
-            console.log('Manual toggle ignored. Use physical AUTO/OFF/ON selector switch.');
+            console.log('Manual toggle ignored. Use physical AUTO/MANUAL and ON/OFF toggle switches.');
         }
 
         function previewThreshold(val) {
@@ -1766,7 +1767,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
         /* ── Power Button Handler ───────────────────── */
         function handlePowerClick(e) {
-            console.log('Power controls overridden by physical AUTO/OFF/ON switch.');
+            console.log('Power controls overridden by physical AUTO/MANUAL and ON/OFF toggle switches.');
         }
 
         /* ── Helpers ────────────────────────────────── */

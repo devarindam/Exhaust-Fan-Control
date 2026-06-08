@@ -161,6 +161,61 @@ The DHT22 communicates with the ESP32 over a single bidirectional data line. Thi
 
 > **Note on breakout boards**: Many DHT22 modules sold on a small PCB (typically 3-pin breakouts) already include an on-board pull-up resistor. If you are using such a module, do **not** add a second external resistor — the parallel resistance can pull the line too strongly. A bare 4-pin DHT22 sensor always requires the external pull-up shown above. If unsure, check for a resistor next to the data pin or measure the resistance between the DATA and VCC pins.
 
+### Opto-Isolated Relay Module (1-Channel, 5V)
+
+This project uses a 5V opto-isolated relay module with pins `DC+`, `DC-`, `IN` (control side), `JD+`, `JD-` (relay-coil power), and `COM` / `NO` / `NC` (output screw terminals). The relay output switches the **contactor coil**, not the motor directly. The board has two jumpers that must be set correctly.
+
+**Trigger jumper → set to L (low-level).** The firmware uses active-LOW relay logic (`RELAY_ON = LOW` in `config.h`): when it wants the fan ON it drives `RELAY_PIN` (GPIO 16) LOW. The module must therefore interpret LOW as "energize", which is the **L** jumper position. Leaving it on **H** inverts the logic — the fan would run when the firmware thinks it is off, and vice-versa.
+
+**JD+/JD- jumper → choose your coil-power source.** The relay coil draws ~190 mA. The board ships with a shorting jumper tying `DC+` to `JD+`, so the coil runs from the same 5V as the control logic. You have two options:
+
+- **Option A — shared 5V (jumper installed, simplest)**: `DC+`/`DC-`/`JD+`/`JD-` all run from one 5V supply. Size that supply for at least ~1 A to cover the ESP32, relay coil, LCD, and buzzer together. Coil switching noise shares the ESP32 rail.
+- **Option B — separate coil supply (jumper removed, full isolation, recommended for long-term use)**: Remove the `DC+`/`JD+` jumper and feed `JD+`/`JD-` from an independent 5V source (e.g. a second HLK-PM01 or 5V adapter). **Keep `JD-` on that separate supply's ground — do NOT join it to the ESP32 ground**, or the opto isolation is defeated. The control side (`DC+`/`DC-`) then only powers the tiny opto LED (~2–4 mA).
+
+```
+        ESP32                  5V Opto-Isolated Relay Module
+   ┌─────────────┐            ┌──────────────────────────────┐
+   │             │            │  CONTROL SIDE  │  COIL SIDE    │
+   │  GPIO 16  ──┼───────────►│ IN             │               │
+   │  5V       ──┼───────────►│ DC+      ┌─────┤ JD+           │
+   │  GND      ──┼───────────►│ DC-      │     │ JD-           │
+   │             │            │  [H][L]  │     │               │
+   │             │            │     ▲    └─────┘ DC+–JD+ jumper │
+   └─────────────┘            │  set L          (Option A) or  │
+                              │ (active-LOW)    separate 5V to  │
+                              │                 JD+/JD- (Opt B) │
+                              ├───────────────────────────────┤
+                              │  OUTPUT (screw terminals)      │
+                              │   COM ──► 220V AC LIVE         │
+                              │   NO  ──► Contactor Coil A1    │
+                              │   NC  ──► (unused)             │
+                              └───────────────────────────────┘
+                                          │
+                                Contactor Coil A2 ──► 220V NEUTRAL
+
+      Using NO (not NC) means the contactor — and fan — is OFF when the
+      relay is de-energized or the ESP32 is unpowered (fail-safe state).
+```
+
+> **Inductive load**: Fit an RC snubber or MOV across the contactor coil (see the safety section). The relay contacts see the coil's inductive kickback on every switch, and the ~30 A contact rating should be treated conservatively — this is exactly why the relay switches a contactor rather than the motor's inductive inrush directly.
+
+### Contactor Coil Snubber (RC + MOV)
+
+To protect the relay contacts from the contactor coil's inductive kickback (and reduce electrical noise that can disturb the ESP32), fit a snubber across the coil. The simplest option is a ready-made combined **RC + MOV absorption module** (sold for relay/thyristor contact protection, typically rated for AC/DC 5–400 V inductive loads under 1000 W). The RC network damps the voltage ringing while the built-in varistor clamps the peak, so one part covers both jobs.
+
+- **Placement**: connect the module's two leads directly across the contactor **coil terminals (A1–A2)**. (Connecting across the relay's COM–NO contacts is also valid.) It is AC-rated and non-polarized, so lead orientation does not matter.
+- **If building discrete instead of a module**: a 0.1 µF **X2 safety capacitor (275 VAC)** in series with a **100 Ω, 2 W** resistor across A1–A2 is a suitable equivalent for a small AC coil; add a ~275 VAC-class MOV (e.g. S14K275) in parallel for peak clamping.
+- **Sizing note**: the RC values scale with the coil's holding current/VA — for a typical low-VA 220 V AC contactor coil the values above (or a generic module) are appropriate. A much larger coil would need a larger capacitor.
+- **DC coils differ**: if you ever use a **DC** contactor coil instead, do not use an RC snubber — fit a simple flyback diode across the coil.
+
+```
+   Relay NO ──────► Contactor Coil A1 ──┐
+                                        ├──[ RC + MOV snubber module ]
+   220V Neutral ──► Contactor Coil A2 ──┘   (across A1–A2)
+```
+
+> Mount the snubber at the contactor coil terminals with short leads, inside the enclosure. It sits on 220 V AC — treat it as a mains-voltage part and verify the encapsulation is intact before wiring.
+
 > ⚠️ **SAFETY WARNING**: This system interfaces with 220V AC mains. All AC wiring
 > must be performed by a qualified electrician. Use proper insulation and fuses.
 > Never work on the circuit while energized.
