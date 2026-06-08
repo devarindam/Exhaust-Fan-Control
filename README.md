@@ -7,14 +7,14 @@ A complete IoT system that reads room temperature and automatically controls an 
 ## ✨ Features
 
 - **Automatic fan control** — Fan turns ON/OFF based on configurable temperature threshold
-- **Physical selector control** — AUTO/OFF/ON selector switch owns fan mode and power for safer local operation
+- **Physical switch control** — Two toggle switches (AUTO/MANUAL + ON/OFF) own fan mode and power for safer local operation, with the AUTO toggle taking priority
 - **Real-time monitoring** — Live temperature, humidity, and fan status updates via WebSocket
 - **Hysteresis control** — Prevents rapid toggling near the threshold temperature
 - **Live fan runtime tracking** — Current continuous run, today's runtime, and ON/OFF cycle count update live on the dashboard
 - **Forced rest cycle (motor protection)** — After 12 hours of continuous operation the fan is automatically stopped and locked in a 30-minute cooldown to protect the motor windings. Both durations are adjustable from the dashboard.
 - **Persistent protected settings** — Threshold, hysteresis, max continuous run, cooldown duration, and runtime counters survive reboot using ESP32 NVS/Preferences
 - **Sensor and controller health** — Dashboard reports sensor status, last sensor update, WiFi quality, contactor feedback, controller state, and active lock reason
-- **Local 20x4 LCD status** — Optional I2C LCD shows temperature, humidity, fan state, selector position, controller state, WiFi/IP, and cooldown status without opening the dashboard
+- **Local 20x4 LCD status** — Optional I2C LCD shows temperature, humidity, fan state, switch state, controller state, WiFi/IP, and cooldown status without opening the dashboard
 - **WiFi provisioning mode** — If credentials are missing or invalid, the controller opens a setup access point so WiFi can be configured without editing `config.h`
 - **Beautiful dashboard** — Premium dark-themed web UI with animated fan icon
 - **Zero app install** — Access from any device's browser on the same WiFi network
@@ -33,7 +33,7 @@ A complete IoT system that reads room temperature and automatically controls an 
 | 6 | 10kΩ Resistor | Pull-up for DHT22 data line |
 | 7 | 5V Power Supply | For ESP32 (USB adapter or HLK-PM01) |
 | 8 | Jumper Wires | For connections |
-| 9 | 3-position selector switch | AUTO/OFF/ON local control |
+| 9 | 2 × SPST toggle switches | AUTO/MANUAL toggle (GPIO 25) + ON/OFF toggle (GPIO 26), active-LOW |
 | 10 | Contactor auxiliary NO contact | Feedback input for contactor state |
 | 11 | Buzzer | Local alarm/notification output |
 | 12 | 20x4 I2C LCD Display | HD44780-compatible LCD with I2C backpack, usually address `0x27` or `0x3F` |
@@ -74,8 +74,8 @@ A complete IoT system that reads room temperature and automatically controls an 
     ┌─────────────┐                    ┌──────────────┐
     │  GPIO 4     ├───────────────────►│ DHT22 Data   │
     │  GPIO 16    ├───────────────────►│ Relay IN     │
-    │  GPIO 25    ├───────────────────►│ AUTO Switch  │
-    │  GPIO 26    ├───────────────────►│ ON Switch    │
+    │  GPIO 25    ├───────────────────►│ Auto/Manual  │
+    │  GPIO 26    ├───────────────────►│ On/Off Switch│
     │  GPIO 27    ├───────────────────►│ Aux Feedback │
     │  GPIO 33    ├───────────────────►│ Buzzer       │
     │  GPIO 21    ├───────────────────►│ LCD SDA      │
@@ -100,7 +100,66 @@ A complete IoT system that reads room temperature and automatically controls an 
     GND → ESP32 GND
     SDA → ESP32 GPIO 21
     SCL → ESP32 GPIO 22
+
+    Control Switches & Auxiliary Feedback (all Active LOW):
+
+    3.3V ─────────────┐  (internal pull-ups enabled in firmware)
+                      │
+    AUTO/MANUAL SW    │            ON/OFF SW
+    ┌──────────┐      │            ┌──────────┐
+    │  SPST    │      │            │  SPST    │
+    │ toggle   │      │            │ toggle   │
+    └─┬──────┬─┘      │            └─┬──────┬─┘
+      │      │        │              │      │
+   GPIO 25   └─ GND   │           GPIO 26   └─ GND
+      │               │              │
+      └─ (INPUT_PULLUP)              └─ (INPUT_PULLUP)
+
+      Closed (ON)  → pin reads LOW  → active
+      Open  (OFF)  → pin reads HIGH → inactive
+
+
+    Contactor Auxiliary Feedback (dry NO contact):
+
+    ┌─────────────────────────────┐
+    │      MAGNETIC CONTACTOR      │
+    │   ┌───────────────────────┐ │
+    │   │  Auxiliary NO contact │ │
+    │   └──────┬─────────┬──────┘ │
+    └──────────┼─────────┼────────┘
+               │         │
+            GPIO 27      └──── ESP32 GND
+               │
+        (INPUT_PULLUP, Active LOW)
+
+      Contactor energized → aux NO closes → GPIO 27 LOW  → "fan confirmed ON"
+      Contactor released  → aux NO opens  → GPIO 27 HIGH → "fan confirmed OFF"
+
+    ⚠️ The auxiliary contact must be a DRY (volt-free) contact carrying only
+       ESP32 logic level. NEVER connect 220V AC to GPIO 27.
+
 ```
+
+### DHT22 Data Line Pull-Up
+
+The DHT22 communicates with the ESP32 over a single bidirectional data line. This line must be held HIGH while idle so the sensor and microcontroller can reliably drive it LOW during each transaction. Without a pull-up the line floats, producing intermittent reads, checksum failures, or a permanently "failed" sensor.
+
+- **Resistor**: Connect a 10kΩ resistor (4.7kΩ–10kΩ acceptable) between the DHT22 **Data** pin (Pin 2) and **3.3V**. The ESP32's `DHT_PIN` (default GPIO 4) ties into the same node.
+- **Wire to 3.3V, not 5V**: The ESP32 GPIO pins are not 5V-tolerant. Pull the data line up to 3.3V — the same rail powering the DHT22 VCC — so the idle-HIGH level never exceeds the ESP32's input rating.
+- **Keep leads short**: For runs longer than ~20 cm, use the lower 4.7kΩ value and/or shielded cable to keep edges clean.
+
+```
+    3.3V ──┬──────────────► DHT22 Pin 1 (VCC)
+           │
+          [ ] 10kΩ
+           │
+           ├──────────────► DHT22 Pin 2 (DATA)
+           │
+           └──────────────► ESP32 GPIO 4
+    GND ──────────────────► DHT22 Pin 3 (GND)
+```
+
+> **Note on breakout boards**: Many DHT22 modules sold on a small PCB (typically 3-pin breakouts) already include an on-board pull-up resistor. If you are using such a module, do **not** add a second external resistor — the parallel resistance can pull the line too strongly. A bare 4-pin DHT22 sensor always requires the external pull-up shown above. If unsure, check for a resistor next to the data pin or measure the resistance between the DATA and VCC pins.
 
 > ⚠️ **SAFETY WARNING**: This system interfaces with 220V AC mains. All AC wiring
 > must be performed by a qualified electrician. Use proper insulation and fuses.
@@ -118,7 +177,7 @@ This controller should be treated as a mains-voltage appliance, not just a low-v
 - **Isolation spacing**: Maintain clear physical separation between 220V AC wiring and ESP32/sensor wiring. Use terminal blocks, insulated crimp ferrules, heat-shrink, and proper creepage/clearance distances; never leave bare mains conductors exposed.
 - **Strain relief**: Use cable glands, clamps, or conduit so cable movement cannot pull on screw terminals, solder joints, the relay module, or the ESP32 board.
 - **Auxiliary feedback contact**: Connect `FEEDBACK_PIN` only to an isolated dry auxiliary contact from the contactor. Never feed AC voltage into an ESP32 GPIO pin.
-- **Testing before load**: First test with the motor disconnected, then with a safe test load, and only then connect the actual fan motor. Verify relay logic, selector positions, contactor feedback, fuse/MCB operation, and emergency power-off access.
+- **Testing before load**: First test with the motor disconnected, then with a safe test load, and only then connect the actual fan motor. Verify relay logic, switch states, contactor feedback, fuse/MCB operation, and emergency power-off access.
 
 ---
 
@@ -193,8 +252,8 @@ Optionally adjust:
 3. The dashboard shows:
    - **Live temperature** and humidity
    - **Fan status** with animated fan icon
-   - **AUTO/OFF/ON selector state**
-   - **Physical selector state** and read-only power status
+   - **Resolved switch state** (AUTO / ON / OFF)
+   - **Physical switch state** and read-only power status
    - **Threshold & hysteresis** sliders for auto mode tuning
    - **Controller health** including sensor status, WiFi quality, feedback status, state, lock reason, and last event
 
@@ -206,16 +265,18 @@ Example with threshold = 28°C, hysteresis = 2°C:
 - Fan turns OFF at 26°C
 - Between 26-28°C: fan stays in its current state
 
-### Physical selector control
-Fan mode and power are controlled by the physical **AUTO/OFF/ON** selector switch on the controller enclosure:
+### Physical switch control
+Fan mode and power are controlled by **two SPST toggle switches** on the controller enclosure — an **AUTO/MANUAL** toggle (GPIO 25) and an **ON/OFF** toggle (GPIO 26). Both are active-LOW (closed = active). The firmware resolves them into a single state, with the AUTO toggle taking priority:
 
-| Position | Behavior |
-|----------|----------|
-| AUTO | Firmware uses temperature threshold, hysteresis, minimum run/stop timers, and cooldown protection. |
-| OFF | Fan is forced OFF. This local OFF position overrides dashboard convenience behavior. |
-| ON | Fan is forced ON unless a protective cooldown or fault lock blocks the request. |
+| AUTO/MANUAL toggle | ON/OFF toggle | Resolved state | Behavior |
+|--------------------|---------------|----------------|----------|
+| Active | (ignored) | AUTO | Firmware uses temperature threshold, hysteresis, minimum run/stop timers, and cooldown protection. |
+| Inactive | Active | ON | Fan is forced ON unless a protective cooldown or fault lock blocks the request. |
+| Inactive | Inactive | OFF | Fan is forced OFF. This local OFF state overrides dashboard convenience behavior. |
 
-The dashboard is intentionally read-only for mode and power. It shows the selector state and fan status, while protected settings such as threshold, hysteresis, max continuous run, and cooldown duration require the administrator password.
+Because the AUTO toggle is checked first, enabling it overrides the ON/OFF toggle regardless of the latter's position. The "OFF" state is simply both toggles inactive.
+
+The dashboard is intentionally read-only for mode and power. It shows the resolved switch state and fan status, while protected settings such as threshold, hysteresis, max continuous run, and cooldown duration require the administrator password.
 
 ### Sensor fail-safe behavior
 If the DHT22 repeatedly fails to return valid readings, the controller marks the sensor as failed, shows the condition in the dashboard health panel, triggers the configured buzzer notification pattern, and applies the configured safe policy. By default, AUTO mode runs the fan during sensor failure unless cooldown protection or the physical OFF position blocks it.
@@ -246,9 +307,9 @@ A progress bar beneath the metrics shows the current run as a percentage of the 
 3. During cooldown the firmware blocks:
    - Auto-mode turn-on requests (high temperature is logged but not actuated)
    - Dashboard or network ON requests
-   - The physical AUTO/ON selector switch attempting to force the fan ON
+   - The physical AUTO or ON toggle attempting to force the fan ON
 4. The physical **OFF** position still works at all times — safety overrides convenience.
-5. When the 30 min elapses the fan resumes normal AUTO/OFF/ON selector-driven operation. The continuous-run timer resets to zero on every OFF, so a long off-period naturally pre-empts the rest cycle.
+5. When the 30 min elapses the fan resumes normal switch-driven operation (AUTO / ON / OFF). The continuous-run timer resets to zero on every OFF, so a long off-period naturally pre-empts the rest cycle.
 
 ### Adjustable from the dashboard
 
@@ -321,7 +382,7 @@ esp32-fan-control/
 ```
 
 1. **DHT22** reads room temperature every 2 seconds.
-2. **ESP32** applies threshold logic in AUTO or follows the physical OFF/ON selector positions.
+2. **ESP32** applies threshold logic in AUTO or follows the physical ON/OFF toggle state.
 3. **Relay Module** switches control voltage to energize or de-energize the **Magnetic Contactor's coil**.
 4. **Magnetic Contactor** uses its heavy-duty power contacts to switch high-inrush AC mains to the **Exhaust Fan Motor** ON or OFF. This isolates the sensitive relay module from the motor's inductive startup surges, protecting contacts and ensuring longevity.
 5. **Web dashboard** shows real-time status via WebSocket and allows protected settings changes after administrator unlock.
