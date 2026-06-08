@@ -122,7 +122,7 @@ A complete IoT system that reads room temperature and automatically controls an 
     Contactor Auxiliary Feedback (dry NO contact):
 
     ┌─────────────────────────────┐
-    │      MAGNETIC CONTACTOR      │
+    │      MAGNETIC CONTACTOR     │
     │   ┌───────────────────────┐ │
     │   │  Auxiliary NO contact │ │
     │   └──────┬─────────┬──────┘ │
@@ -174,22 +174,22 @@ This project uses a 5V opto-isolated relay module with pins `DC+`, `DC-`, `IN` (
 
 ```
         ESP32                  5V Opto-Isolated Relay Module
-   ┌─────────────┐            ┌──────────────────────────────┐
+   ┌─────────────┐            ┌────────────────────────────────┐
    │             │            │  CONTROL SIDE  │  COIL SIDE    │
    │  GPIO 16  ──┼───────────►│ IN             │               │
    │  5V       ──┼───────────►│ DC+      ┌─────┤ JD+           │
    │  GND      ──┼───────────►│ DC-      │     │ JD-           │
    │             │            │  [H][L]  │     │               │
-   │             │            │     ▲    └─────┘ DC+–JD+ jumper │
+   │             │            │     ▲    └─────┘ DC+–JD+ jumper│
    └─────────────┘            │  set L          (Option A) or  │
-                              │ (active-LOW)    separate 5V to  │
-                              │                 JD+/JD- (Opt B) │
-                              ├───────────────────────────────┤
+                              │ (active-LOW)    separate 5V to │
+                              │                 JD+/JD-(Opt B) │
+                              ├────────────────────────────────┤
                               │  OUTPUT (screw terminals)      │
                               │   COM ──► 220V AC LIVE         │
                               │   NO  ──► Contactor Coil A1    │
                               │   NC  ──► (unused)             │
-                              └───────────────────────────────┘
+                              └────────────────────────────────┘
                                           │
                                 Contactor Coil A2 ──► 220V NEUTRAL
 
