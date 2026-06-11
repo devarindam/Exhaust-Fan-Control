@@ -406,10 +406,9 @@ Exhaust-Fan-Control-main/
 ├── preview/
 │   └── index.html                   # Standalone dashboard preview/source HTML
 └── firmware/
-    └── fan_control/
-        ├── fan_control.ino          # Main ESP32 Arduino sketch
-        ├── config.h                 # WiFi, pin, and threshold configuration
-        └── web_page.h               # Dashboard HTML (PROGMEM, auto-generated)
+    ├── fan_control.ino          # Main ESP32 Arduino sketch
+    ├── config.h                 # WiFi, pin, and threshold configuration
+    └── web_page.h               # Dashboard HTML (PROGMEM, auto-generated)
 ```
 
 ---
