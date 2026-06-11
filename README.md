@@ -399,14 +399,17 @@ The preview also demonstrates the rest cycle on a **compressed timeline**: the f
 ## 📁 Project Structure
 
 ```
-esp32-fan-control/
-├── fan_control.ino        # Main ESP32 Arduino sketch
-├── config.h               # WiFi, pin, and threshold configuration
-├── web_page.h             # Dashboard HTML (PROGMEM, auto-generated)
-├── index.html             # Standalone dashboard preview/source HTML
-├── generate_web_page.py   # Regenerates web_page.h from index.html
-├── sync_web_page.ps1      # PowerShell helper for syncing the web dashboard
-└── README.md              # This file
+Exhaust-Fan-Control-main/
+├── README.md                        # This file
+├── generate_web_page.py             # Regenerates web_page.h from index.html
+├── sync_web_page.ps1                # PowerShell helper for syncing the web dashboard
+├── preview/
+│   └── index.html                   # Standalone dashboard preview/source HTML
+└── firmware/
+    └── fan_control/
+        ├── fan_control.ino          # Main ESP32 Arduino sketch
+        ├── config.h                 # WiFi, pin, and threshold configuration
+        └── web_page.h               # Dashboard HTML (PROGMEM, auto-generated)
 ```
 
 ---
